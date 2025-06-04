@@ -21,12 +21,12 @@ public class DeudaScheduler {
     private DeudaRepository deudaRepository;
 
     // @Scheduled(cron = "0 0 0 * * ?") // Ejecuta la tarea a medianoche
-    @Scheduled(cron = "0 58 16 * * ?") // Ejecuta la tarea a medianoche
-    public void actualizarDeudasVencidas() {
-        System.out.println("⏳ Verificando deudas vencidas... " +
-                LocalDateTime.now());
-        deudaService.actualizarDeudasCoactivas();
-    }
+    //@Scheduled(cron = "0 58 16 * * ?") // Ejecuta la tarea a medianoche
+    //public void actualizarDeudasVencidas() {
+    //    System.out.println("⏳ Verificando deudas vencidas... " +
+    //            LocalDateTime.now());
+    //    deudaService.actualizarDeudasCoactivas();
+    //}
 
     // @Scheduled(cron = "0 39 16 * * ?") // Prueba para obtener la lista de deudas
     // de un cliente

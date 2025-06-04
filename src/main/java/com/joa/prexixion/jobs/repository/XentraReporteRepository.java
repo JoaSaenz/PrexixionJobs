@@ -16,11 +16,11 @@ import com.joa.prexixion.jobs.model.XentraReporte;
 @Repository
 public interface XentraReporteRepository extends CrudRepository<XentraReporte, Integer> {
 
-    @Modifying
-    @Transactional
-    @Query(value = "UPDATE xentraFechas SET estadoLogico = 'BLOQUEADO' " +
-            "WHERE idEstado = 1 AND id = :id AND fecha < :fecha", nativeQuery = true)
-    String marcarXentraReporteComoBloqueado(@Param("id") int id, @Param("fecha") LocalDate fecha);
+    //@Modifying
+    //@Transactional
+    //@Query(value = "UPDATE xentraFechas SET estadoLogico = 'BLOQUEADO' " +
+    //        "WHERE idEstado = 1 AND id = :id AND fecha < :fecha", nativeQuery = true)
+    //String marcarXentraReporteComoBloqueado(@Param("id") int id, @Param("fecha") LocalDate fecha);
 
     @Query(value = "SELECT * FROM xentraFechas WHERE idEstado = 1 " +
             "AND estadoLogico = 'PENDIENTE' AND fecha <= :fechaLimite", nativeQuery = true)
