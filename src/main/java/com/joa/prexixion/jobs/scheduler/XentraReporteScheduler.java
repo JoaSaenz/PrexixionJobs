@@ -22,7 +22,7 @@ public class XentraReporteScheduler {
     public void bloquearReportesVencidos() {
         System.out.println("Entrando a ejecutar job Xentra Reporte");
         LocalDate hoy = LocalDate.now();
-        LocalDate fechaLimite = hoy.minusDays(1); // ayer
+        LocalDate fechaLimite = hoy.minusDays(2); // ayer
         List<XentraReporte> reportes = xentraReporteRepository.obtenerXentraReporteParaBloqueo(fechaLimite);
 
         for (XentraReporte reporte : reportes) {
