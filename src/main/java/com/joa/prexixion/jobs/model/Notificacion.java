@@ -2,6 +2,7 @@ package com.joa.prexixion.jobs.model;
 
 import java.time.LocalDateTime;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -11,16 +12,21 @@ import jakarta.persistence.UniqueConstraint;
 
 @Entity
 @Table(
-    name = "notificacion",
-    uniqueConstraints = @UniqueConstraint(columnNames = {"clienteRuc", "idSunat"})
+    name = "sunatBuzonNotificacion",
+    uniqueConstraints = @UniqueConstraint(columnNames = {"ruc", "idSunat"})
 )
 public class Notificacion {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    private String clienteRuc;
+
+     @Column(nullable = false)
+    private String ruc;
+
+     @Column(nullable = false)
     private String idSunat;
+    
     private String titulo;
     private LocalDateTime fecha;
 
@@ -35,12 +41,12 @@ public class Notificacion {
         this.id = id;
     }
 
-    public String getClienteRuc() {
-        return clienteRuc;
+    public String getRuc() {
+        return ruc;
     }
 
-    public void setClienteRuc(String clienteRuc) {
-        this.clienteRuc = clienteRuc;
+    public void setRuc(String ruc) {
+        this.ruc = ruc;
     }
 
     public String getIdSunat() {

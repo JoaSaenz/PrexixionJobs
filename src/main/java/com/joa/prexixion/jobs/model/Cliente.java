@@ -1,5 +1,6 @@
 package com.joa.prexixion.jobs.model;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -8,9 +9,12 @@ import jakarta.persistence.Table;
 @Table(name = "cliente")  
 public class Cliente {
     @Id
+    @Column(length = 11, nullable = false)
     private String ruc;
     
+    @Column(length = 50)
     private String solU;
+    @Column(length = 50)
     private String solC;
     
     public Cliente() {
