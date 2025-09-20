@@ -11,7 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import com.joa.prexixion.jobs.dto.NotificacionDTO;
-import com.joa.prexixion.jobs.dto.SunatBuzonRequestDTO;
+import com.joa.prexixion.jobs.dto.ClienteDTO;
 import com.joa.prexixion.jobs.dto.SunatBuzonResponseDTO;
 import com.joa.prexixion.jobs.model.Cliente;
 import com.joa.prexixion.jobs.model.Notificacion;
@@ -38,16 +38,17 @@ public class SunatBuzonScheduler {
 
         for (Cliente cliente : clientes) {
             try {
-                SunatBuzonRequestDTO request = new SunatBuzonRequestDTO(
+                ClienteDTO clienteDTO = new ClienteDTO(
                         cliente.getRuc(),
                         cliente.getSolU(),
                         cliente.getSolC());
 
                 String url = "http://localhost:3000/sunat/consultar";
-                SunatBuzonResponseDTO response = restTemplate.postForObject(url, request, SunatBuzonResponseDTO.class);
+                SunatBuzonResponseDTO response = restTemplate.postForObject(url, clienteDTO,
+                        SunatBuzonResponseDTO.class);
                 if (response != null && response.isSuccess()) {
                     System.out.println("Cliente " + cliente.getRuc() + " → " + response.getMessage());
-                    procesarNotificaciones(cliente, response.getNotificaciones());
+                    procesarNotificaciones(clienteDTO, response.getNotificaciones());
                 }
 
             } catch (Exception e) {
@@ -56,20 +57,20 @@ public class SunatBuzonScheduler {
         }
     }
 
-    private void procesarNotificaciones(Cliente cliente, List<NotificacionDTO> notificaciones) {
-        if (notificaciones.isEmpty())
+    private void procesarNotificaciones(ClienteDTO clienteDTO, List<NotificacionDTO> notificacionesDTO) {
+        if (notificacionesDTO.isEmpty())
             return;
 
         // Traer los que ya existen
-        List<String> ids = notificaciones.stream().map(NotificacionDTO::getId).toList();
-        List<String> existentes = notificacionRepository.findExistentes(cliente.getRuc(), ids);
+        List<String> ids = notificacionesDTO.stream().map(NotificacionDTO::getId).toList();
+        List<String> existentes = notificacionRepository.findExistentes(clienteDTO.getRuc(), ids);
 
         // Filtrar solo las nuevas
-        List<Notificacion> nuevas = notificaciones.stream()
+        List<Notificacion> nuevas = notificacionesDTO.stream()
                 .filter(n -> !existentes.contains(n.getId()))
                 .map(n -> {
                     Notificacion entidad = new Notificacion();
-                    entidad.setRuc(cliente.getRuc());
+                    entidad.setRuc(clienteDTO.getRuc());
                     entidad.setIdSunat(n.getId());
                     entidad.setTitulo(n.getTitulo());
 
@@ -86,7 +87,7 @@ public class SunatBuzonScheduler {
         if (!nuevas.isEmpty()) {
             notificacionRepository.saveAll(nuevas);
             System.out.println(
-                    "Se guardaron " + nuevas.size() + " notificaciones nuevas para cliente " + cliente.getRuc());
+                    "Se guardaron " + nuevas.size() + " notificaciones nuevas para cliente " + clienteDTO.getRuc());
         }
     }
 }
