@@ -7,6 +7,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 
@@ -21,12 +22,14 @@ public class Notificacion {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-     @Column(nullable = false)
+    @Column(length = 11, nullable = false)
     private String ruc;
 
-     @Column(nullable = false)
+    @Column(length = 50, nullable = false)
     private String idSunat;
     
+    @Lob
+    @Column(columnDefinition = "NVARCHAR(MAX)")
     private String titulo;
     private LocalDateTime fecha;
 
