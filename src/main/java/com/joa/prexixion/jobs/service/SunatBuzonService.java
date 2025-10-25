@@ -41,7 +41,7 @@ public class SunatBuzonService {
         final String nombreJob = "SincronizacionSUNAT";
         jobStatusService.actualizar(nombreJob, "EN_PROGRESO", 0.0, "Iniciando sincronización de buzones...");
 
-        List<Cliente> clientes = clienteRepository.obtenerClientesTest10();
+        List<Cliente> clientes = clienteRepository.obtenerClientesActivos();
         int total = clientes.size();
         int procesados = 0;
 

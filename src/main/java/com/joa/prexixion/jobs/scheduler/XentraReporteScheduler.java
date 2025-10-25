@@ -18,7 +18,7 @@ public class XentraReporteScheduler {
     private XentraReporteRepository xentraReporteRepository;
 
     // @Scheduled(cron = "0 0 17 * * *") // Todos a hora especifica
-    @Scheduled(cron = "0 0 0 * * *") // Todos los días a medianoche
+    @Scheduled(cron = "0 0 4 * * *") // Todos los días a medianoche
     public void bloquearReportesVencidos() {
         System.out.println("Entrando a ejecutar job Xentra Reporte");
         LocalDate hoy = LocalDate.now();
