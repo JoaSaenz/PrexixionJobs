@@ -6,6 +6,8 @@ import com.joa.prexixion.jobs.model.JobStatus;
 import com.joa.prexixion.jobs.repository.JobStatusRepository;
 
 import lombok.RequiredArgsConstructor;
+
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
@@ -15,16 +17,40 @@ public class JobStatusService {
     private final JobStatusRepository repo;
     private final DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    public void actualizar(String nombreJob, String estado, double progreso, String mensaje) {
-        JobStatus status = repo.findByNombreJob(nombreJob)
-                .orElse(JobStatus.builder()
-                        .nombreJob(nombreJob)
-                        .build());
-        status.setEstado(estado);
-        status.setProgreso(progreso);
-        status.setMensaje(mensaje);
-        status.setUltimaActualizacion(LocalDateTime.now().format(fmt));
-        repo.save(status);
+    /** Crear un nuevo registro JobStatus por ejecución */
+    public JobStatus iniciarEjecucion(String nombreJob) {
+
+        JobStatus job = JobStatus.builder()
+                .nombreJob(nombreJob)
+                .estado("EN_PROGRESO")
+                .fechaEjecucion(LocalDate.now())
+                .horaInicio(LocalDateTime.now())
+                .progreso(0.0)
+                .rucsOk(0)
+                .rucsNoOk(0)
+                .mensaje("Iniciando ejecución...")
+                .ultimaActualizacion(LocalDateTime.now().format(fmt))
+                .build();
+
+        return repo.save(job);
+    }
+
+    /** Actualizar progreso, mensaje o estado mientras avanza el job */
+    public JobStatus actualizar(JobStatus job, String estado, double progreso, String mensaje) {
+        job.setEstado(estado);
+        job.setProgreso(progreso);
+        job.setMensaje(mensaje);
+        job.setUltimaActualizacion(LocalDateTime.now().format(fmt));
+        return repo.save(job);
+    }
+
+    /** Marcar finalización de ejecución */
+    public JobStatus finalizarEjecucion(JobStatus job, String estadoFinal) {
+        job.setEstado(estadoFinal);
+        job.setProgreso(100.0);
+        job.setHoraFin(LocalDateTime.now());
+        job.setUltimaActualizacion(LocalDateTime.now().format(fmt));
+        return repo.save(job);
     }
 
     public JobStatus obtener(String nombreJob) {

@@ -23,7 +23,8 @@ public class SunatBuzonController {
     @PostMapping("/sincronizar")
     public ResponseEntity<ApiResponse> sincronizarManualmente() {
         // Lanza la sincronización en segundo plano usando @Async
-        sunatBuzonService.ejecutarAsync();
+        //sunatBuzonService.ejecutarAsync();
+        Long jobId = sunatBuzonService.ejecutarAsync().join();
 
         // Devuelve una respuesta JSON estándar
         ApiResponse response = new ApiResponse(
