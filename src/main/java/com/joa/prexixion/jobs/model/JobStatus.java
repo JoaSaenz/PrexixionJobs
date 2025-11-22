@@ -1,5 +1,9 @@
 package com.joa.prexixion.jobs.model;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -18,4 +22,14 @@ public class JobStatus {
     private Double progreso; // Porcentaje 0.0 a 100.0
     private String mensaje; // Mensaje opcional: "Procesando cliente 3/50"
     private String ultimaActualizacion;
+
+    // Nuevos campos
+    private LocalDate fechaEjecucion;   // DATE
+    private LocalDateTime horaInicio;   // DATETIME
+    private LocalDateTime horaFin;      // DATETIME
+    private Integer rucsOk;             // INT
+    private Integer rucsNoOk;           // INT
+
+    @OneToMany(mappedBy = "jobStatus", cascade = CascadeType.ALL)
+    private List<JobStatusLog> logs;
 }
