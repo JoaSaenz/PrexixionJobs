@@ -77,8 +77,15 @@ public class SunatBuzonService {
     }
 
     private void procesarNotificaciones(ClienteDTO clienteDTO, List<NotificacionDTO> notificacionesDTO) {
-        if (notificacionesDTO.isEmpty())
+        if (notificacionesDTO == null) {
+            System.out.println("Cliente sin notificaciones " + clienteDTO.getRuc());
             return;
+        }
+
+        if (notificacionesDTO.isEmpty()) {
+            System.out.println("Lista de notificaciones vacía " + clienteDTO.getRuc());
+            return;
+        }
 
         List<String> ids = notificacionesDTO.stream().map(NotificacionDTO::getId).toList();
         List<String> existentes = notificacionRepository.findExistentes(clienteDTO.getRuc(), ids);
