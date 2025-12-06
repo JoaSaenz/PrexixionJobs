@@ -4,6 +4,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -24,12 +27,13 @@ public class JobStatus {
     private String ultimaActualizacion;
 
     // Nuevos campos
-    private LocalDate fechaEjecucion;   // DATE
-    private LocalDateTime horaInicio;   // DATETIME
-    private LocalDateTime horaFin;      // DATETIME
-    private Integer rucsOk;             // INT
-    private Integer rucsNoOk;           // INT
+    private LocalDate fechaEjecucion; // DATE
+    private LocalDateTime horaInicio; // DATETIME
+    private LocalDateTime horaFin; // DATETIME
+    private Integer rucsOk; // INT
+    private Integer rucsNoOk; // INT
 
-    @OneToMany(mappedBy = "jobStatus", cascade = CascadeType.ALL)
+    @JsonIgnore
+    @OneToMany(mappedBy = "jobStatus", fetch = FetchType.LAZY)
     private List<JobStatusLog> logs;
 }

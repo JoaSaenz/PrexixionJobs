@@ -1,6 +1,5 @@
 package com.joa.prexixion.jobs.service;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -27,25 +26,22 @@ public class SunatBuzonService {
 
     @Autowired
     private ClienteRepository clienteRepository;
-
     @Autowired
     private NotificacionRepository notificacionRepository;
-
     @Autowired
     private JobStatusService jobStatusService;
-
     @Autowired
     private JobStatusLogRepository logRepository;
 
     private final RestTemplate restTemplate = new RestTemplate();
 
-    /** ✅ Método público que lanza la sincronización en segundo plano */
     @Async
     public CompletableFuture<Long> ejecutarAsync() {
         return sincronizarBuzones();
     }
 
     public CompletableFuture<Long> sincronizarBuzones() {
+
         JobStatus job = jobStatusService.iniciarEjecucion("SincronizacionSUNAT");
         Long jobId = job.getId();
 
@@ -56,90 +52,124 @@ public class SunatBuzonService {
         int ok = 0;
         int noOk = 0;
 
-        long inicioJob = System.currentTimeMillis();
-
         for (Cliente cliente : clientes) {
 
-            long inicio = System.currentTimeMillis();
-            String resultado;
-            String mensaje;
+            long inicioProcesoMs = System.currentTimeMillis();
+            String resultado = "ERROR";
+            String mensaje = "Sin procesar";
+            int nuevas = 0;
 
             try {
-                
-                ClienteDTO clienteDTO = new ClienteDTO(
-                        cliente.getRuc(),
-                        cliente.getSolU(),
-                        cliente.getSolC());
 
-                String url = "http://localhost:3000/sunat/consultar";
-                SunatBuzonResponseDTO response = restTemplate.postForObject(url, clienteDTO,
-                        SunatBuzonResponseDTO.class);
+                ClienteDTO dto = new ClienteDTO(cliente.getRuc(), cliente.getSolU(), cliente.getSolC());
+                SunatBuzonResponseDTO response = llamarServicioNode(dto);
 
-                if (response != null && response.isSuccess()) {
-                    ok++;
-                    resultado = "OK";
-                    mensaje = "Consulta exitosa";
-                    procesarNotificaciones(clienteDTO, response.getNotificaciones());
-                    //double progreso = (procesados * 100.0) / total;
-                    //jobStatusService.actualizar(nombreJob, "EN_PROGRESO", progreso,
-                    //        "Procesado cliente " + cliente.getRuc());
-                } else {
-                    noOk++;
-                    resultado = "EMPTY";
-                    mensaje = "Sin nuevas notificaciones";
-                    //jobStatusService.actualizar(nombreJob, "EN_PROGRESO", (procesados * 100.0) / total,
-                    //        "Cliente " + cliente.getRuc() + " sin nuevas notificaciones");
+                // Node no responde
+                if (response == null) {
+                    return finalizarJobPorError(job, procesados, total, cliente,
+                            "ERROR_INTERNO", "Node no devolvió respuesta", inicioProcesoMs);
+                }
+
+                // Node responde error
+                if (!Boolean.TRUE.equals(response.isSuccess())) {
+
+                    String tipo = response.getType();
+
+                    switch (tipo) {
+                        case "ERROR_SUNAT":
+                            return finalizarJobPorError(job, procesados, total, cliente,
+                                    "ERROR_CRITICO", response.getMessage(), inicioProcesoMs);
+
+                        case "CREDENCIALES_INVALIDAS":
+                            noOk++;
+                            resultado = "CREDENCIALES_INVALIDAS";
+                            mensaje = "Credenciales erróneas";
+                            guardarLogRuc(job, cliente, resultado, mensaje, inicioProcesoMs, 0);
+                            continue;
+
+                        case "ERROR_INTERNO":
+                        case "ERROR_HTTP":
+                        case "TIMEOUT_NODE":
+                        case "NODE_CAIDO":
+                            return finalizarJobPorError(job, procesados, total, cliente,
+                                    tipo, response.getMessage(), inicioProcesoMs);
+                    }
+                }
+
+                // Consultado OK
+                ok++;
+                resultado = "OK";
+                mensaje = "Consulta exitosa";
+
+                if (response.getNotificaciones() != null) {
+                    nuevas = procesarNotificaciones(dto, response.getNotificaciones());
                 }
 
             } catch (Exception e) {
-                noOk++;
-                resultado = "ERROR";
-                mensaje = e.getMessage();
-                //jobStatusService.actualizar(nombreJob, "ERROR", (procesados * 100.0) / total,
-                //        "Error con cliente " + cliente.getRuc() + ": " + e.getMessage());
+                return finalizarJobPorError(job, procesados, total, cliente,
+                        "ERROR", e.getMessage(), inicioProcesoMs);
             }
-            long duracion = System.currentTimeMillis() - inicio;
 
-            // Guardar log por RUC
-            JobStatusLog log = JobStatusLog.builder()
-                    .ruc(cliente.getRuc())
-                    .y(cliente.getY())
-                    .resultado(resultado)
-                    .mensaje(mensaje)
-                    .duracionMs(duracion)
-                    .fechaRegistro(LocalDateTime.now())
-                    .jobStatus(job)
-                    .build();
-
-            logRepository.save(log);
-
+            guardarLogRuc(job, cliente, resultado, mensaje, inicioProcesoMs, nuevas);
             procesados++;
-
-            double progreso = (procesados * 100.0) / total;
 
             job.setRucsOk(ok);
             job.setRucsNoOk(noOk);
 
+            double progreso = (procesados * 100.0) / total;
             jobStatusService.actualizar(job, "EN_PROGRESO", progreso,
                     "Procesado RUC " + cliente.getRuc());
-
         }
+
         jobStatusService.finalizarEjecucion(job, "FINALIZADO");
-
         return CompletableFuture.completedFuture(jobId);
-
-        //jobStatusService.actualizar(nombreJob, "FINALIZADO", 100.0, "Sincronización completada correctamente.");
     }
 
-    private void procesarNotificaciones(ClienteDTO clienteDTO, List<NotificacionDTO> notificacionesDTO) {
-        if (notificacionesDTO == null) {
-            System.out.println("Cliente sin notificaciones " + clienteDTO.getRuc());
-            return;
-        }
+    // ======================================================
+    // MÉTODOS PRIVADOS
+    // ======================================================
 
-        if (notificacionesDTO.isEmpty()) {
-            System.out.println("Lista de notificaciones vacía " + clienteDTO.getRuc());
-            return;
+    private SunatBuzonResponseDTO llamarServicioNode(ClienteDTO dto) {
+        String url = "http://localhost:3000/sunat/consultar";
+        return restTemplate.postForObject(url, dto, SunatBuzonResponseDTO.class);
+    }
+
+    private CompletableFuture<Long> finalizarJobPorError(
+            JobStatus job, int procesados, int total, Cliente cliente,
+            String tipoError, String mensaje, long inicioMs) {
+
+        double progresoActual = (procesados * 100.0) / total;
+
+        jobStatusService.actualizar(job, "ERROR", progresoActual,
+                mensaje);
+
+        jobStatusService.finalizarEjecucion(job, "ERROR");
+
+        guardarLogRuc(job, cliente, tipoError, mensaje, inicioMs, 0);
+
+        return CompletableFuture.completedFuture(job.getId());
+    }
+
+    private void guardarLogRuc(JobStatus job, Cliente cliente,
+            String resultado, String mensaje, long inicioMs, int nuevasNotificaciones) {
+
+        JobStatusLog log = JobStatusLog.builder()
+                .ruc(cliente.getRuc())
+                .y(cliente.getY())
+                .resultado(resultado)
+                .mensaje(mensaje)
+                .duracionMs(System.currentTimeMillis() - inicioMs)
+                .nuevasNotificaciones(nuevasNotificaciones)
+                .fechaRegistro(LocalDateTime.now())
+                .jobStatus(job)
+                .build();
+
+        logRepository.save(log);
+    }
+
+    private int procesarNotificaciones(ClienteDTO clienteDTO, List<NotificacionDTO> notificacionesDTO) {
+        if (notificacionesDTO == null || notificacionesDTO.isEmpty()) {
+            return 0;
         }
 
         List<String> ids = notificacionesDTO.stream().map(NotificacionDTO::getId).toList();
@@ -161,7 +191,8 @@ public class SunatBuzonService {
 
         if (!nuevas.isEmpty()) {
             notificacionRepository.saveAll(nuevas);
-            System.out.println("Se guardaron " + nuevas.size() + " nuevas notificaciones para " + clienteDTO.getRuc());
         }
+
+        return nuevas.size();
     }
 }

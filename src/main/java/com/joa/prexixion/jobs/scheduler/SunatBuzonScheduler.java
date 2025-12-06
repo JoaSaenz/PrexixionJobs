@@ -14,7 +14,7 @@ public class SunatBuzonScheduler {
         this.sunatBuzonService = sunatBuzonService;
     }
 
-    @Scheduled(cron = "0 0 0 * * *") // todos los días a las 00:00
+    @Scheduled(cron = "0 52 10 * * *") // todos los días a las 00:00
     public void ejecutarJob() {
         sunatBuzonService.sincronizarBuzones();
     }

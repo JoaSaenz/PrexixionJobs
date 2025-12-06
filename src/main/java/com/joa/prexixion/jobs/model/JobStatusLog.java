@@ -16,10 +16,11 @@ public class JobStatusLog {
 
     private String ruc;
     private String y;
-    private String resultado;      // OK, ERROR, CREDENCIALES_INVALIDAS, etc
+    private String resultado; // OK, ERROR, CREDENCIALES_INVALIDAS, etc
     private String mensaje;
     private Long duracionMs;
     private LocalDateTime fechaRegistro;
+    private Integer nuevasNotificaciones; // cantidad de nuevas notificaciones para ese RUC
 
     @ManyToOne
     @JoinColumn(name = "idJobStatus")
