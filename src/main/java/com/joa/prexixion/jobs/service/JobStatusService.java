@@ -45,16 +45,18 @@ public class JobStatusService {
     }
 
     /** Marcar finalización de ejecución */
-    public JobStatus finalizarEjecucion(JobStatus job, String estadoFinal) {
+    public JobStatus finalizarEjecucion(JobStatus job, String estadoFinal, double progresoFinal,
+            String mensajeFinal) {
         job.setEstado(estadoFinal);
-        job.setProgreso(100.0);
+        job.setProgreso(progresoFinal);
+        job.setMensaje(mensajeFinal);
         job.setHoraFin(LocalDateTime.now());
         job.setUltimaActualizacion(LocalDateTime.now().format(fmt));
         return repo.save(job);
     }
 
     public JobStatus obtener(String nombreJob) {
-        return repo.findByNombreJob(nombreJob)
+        return repo.findTopByNombreJobOrderByHoraInicioDesc(nombreJob)
                 .orElse(JobStatus.builder()
                         .nombreJob(nombreJob)
                         .estado("SIN_INICIAR")

@@ -7,5 +7,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import com.joa.prexixion.jobs.model.JobStatus;
 
 public interface JobStatusRepository extends JpaRepository<JobStatus, Long> {
-    Optional<JobStatus> findByNombreJob(String nombreJob);
+    Optional<JobStatus> findTopByNombreJobOrderByHoraInicioDesc(String nombreJob);
 }

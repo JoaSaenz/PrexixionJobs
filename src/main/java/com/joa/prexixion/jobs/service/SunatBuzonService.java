@@ -45,86 +45,116 @@ public class SunatBuzonService {
         JobStatus job = jobStatusService.iniciarEjecucion("SincronizacionSUNAT");
         Long jobId = job.getId();
 
-        List<Cliente> clientes = clienteRepository.obtenerClientesTest10();
-        int total = clientes.size();
-
         int procesados = 0;
         int ok = 0;
         int noOk = 0;
+        boolean errorCritico = false;
+        String mensajeFinal = "Ejecución finalizada correctamente";
 
-        for (Cliente cliente : clientes) {
+        List<Cliente> clientes = clienteRepository.obtenerClientesTest10();
+        int total = clientes.size();
 
-            long inicioProcesoMs = System.currentTimeMillis();
-            String resultado = "ERROR";
-            String mensaje = "Sin procesar";
-            int nuevas = 0;
+        try {
 
-            try {
+            for (Cliente cliente : clientes) {
 
-                ClienteDTO dto = new ClienteDTO(cliente.getRuc(), cliente.getSolU(), cliente.getSolC());
-                SunatBuzonResponseDTO response = llamarServicioNode(dto);
+                long inicioMs = System.currentTimeMillis();
+                String resultado = "ERROR";
+                String mensaje = "Sin procesar";
+                int nuevas = 0;
 
-                // Node no responde
-                if (response == null) {
-                    return finalizarJobPorError(job, procesados, total, cliente,
-                            "ERROR_INTERNO", "Node no devolvió respuesta", inicioProcesoMs);
-                }
+                try {
+                    ClienteDTO dto = new ClienteDTO(
+                            cliente.getRuc(),
+                            cliente.getSolU(),
+                            cliente.getSolC());
 
-                // Node responde error
-                if (!Boolean.TRUE.equals(response.isSuccess())) {
+                    SunatBuzonResponseDTO response = llamarServicioNode(dto);
 
-                    String tipo = response.getType();
-
-                    switch (tipo) {
-                        case "ERROR_SUNAT":
-                            return finalizarJobPorError(job, procesados, total, cliente,
-                                    "ERROR_CRITICO", response.getMessage(), inicioProcesoMs);
-
-                        case "CREDENCIALES_INVALIDAS":
-                            noOk++;
-                            resultado = "CREDENCIALES_INVALIDAS";
-                            mensaje = "Credenciales erróneas";
-                            guardarLogRuc(job, cliente, resultado, mensaje, inicioProcesoMs, 0);
-                            continue;
-
-                        case "ERROR_INTERNO":
-                        case "ERROR_HTTP":
-                        case "TIMEOUT_NODE":
-                        case "NODE_CAIDO":
-                            return finalizarJobPorError(job, procesados, total, cliente,
-                                    tipo, response.getMessage(), inicioProcesoMs);
+                    if (response == null) {
+                        throw new IllegalStateException("Node no devolvió respuesta");
                     }
+
+                    if (!Boolean.TRUE.equals(response.isSuccess())) {
+
+                        switch (response.getType()) {
+
+                            case "CREDENCIALES_INVALIDAS":
+                                resultado = "CREDENCIALES_INVALIDAS";
+                                mensaje = "Credenciales erróneas";
+                                noOk++;
+                                break;
+
+                            case "ERROR_SUNAT":
+                            case "ERROR_INTERNO":
+                            case "ERROR_HTTP":
+                            case "TIMEOUT_NODE":
+                            case "NODE_CAIDO":
+                                throw new RuntimeException(response.getMessage());
+
+                            default:
+                                throw new RuntimeException("Error desconocido: " + response.getType());
+                        }
+
+                    } else {
+                        // OK
+                        resultado = "OK";
+                        mensaje = "Consulta exitosa";
+                        ok++;
+
+                        if (response.getNotificaciones() != null) {
+                            nuevas = procesarNotificaciones(dto, response.getNotificaciones());
+                        }
+                    }
+
+                } catch (Exception e) {
+                    resultado = "ERROR_CRITICO";
+                    mensaje = normalizarMensaje(e);
+                    errorCritico = true;
+                    noOk++;
                 }
 
-                // Consultado OK
-                ok++;
-                resultado = "OK";
-                mensaje = "Consulta exitosa";
+                guardarLogRuc(job, cliente, resultado, mensaje, inicioMs, nuevas);
 
-                if (response.getNotificaciones() != null) {
-                    nuevas = procesarNotificaciones(dto, response.getNotificaciones());
+                procesados++;
+
+                job.setRucsOk(ok);
+                job.setRucsNoOk(noOk);
+
+                double progreso = (procesados * 100.0) / total;
+
+                jobStatusService.actualizar(
+                        job,
+                        "EN_PROGRESO",
+                        progreso,
+                        "Procesado RUC " + cliente.getRuc());
+
+                // Si hubo error crítico, detenemos el job limpiamente
+                if (errorCritico) {
+                    break;
                 }
-
-            } catch (Exception e) {
-                return finalizarJobPorError(job, procesados, total, cliente,
-                        "ERROR", e.getMessage(), inicioProcesoMs);
             }
 
-            guardarLogRuc(job, cliente, resultado, mensaje, inicioProcesoMs, nuevas);
-            procesados++;
+        } finally {
 
-            job.setRucsOk(ok);
-            job.setRucsNoOk(noOk);
+            String estadoFinal = errorCritico ? "ERROR" : "FINALIZADO";
 
-            double progreso = (procesados * 100.0) / total;
-            jobStatusService.actualizar(job, "EN_PROGRESO", progreso,
-                    "Procesado RUC " + cliente.getRuc());
+            mensajeFinal = errorCritico
+                    ? "Ejecución detenida por error crítico"
+                    : String.format(
+                            "Ejecución completada: %d OK, %d con error",
+                            job.getRucsOk(),
+                            job.getRucsNoOk());
+
+            double progresoFinal = errorCritico
+                    ? job.getProgreso() // se queda donde falló
+                    : 100.0; // solo éxito llega a 100%
+
+            jobStatusService.finalizarEjecucion(job, estadoFinal, progresoFinal, mensajeFinal);
         }
 
-        jobStatusService.finalizarEjecucion(job, "FINALIZADO");
         return CompletableFuture.completedFuture(jobId);
     }
-
     // ======================================================
     // MÉTODOS PRIVADOS
     // ======================================================
@@ -132,22 +162,6 @@ public class SunatBuzonService {
     private SunatBuzonResponseDTO llamarServicioNode(ClienteDTO dto) {
         String url = "http://localhost:3000/sunat/consultar";
         return restTemplate.postForObject(url, dto, SunatBuzonResponseDTO.class);
-    }
-
-    private CompletableFuture<Long> finalizarJobPorError(
-            JobStatus job, int procesados, int total, Cliente cliente,
-            String tipoError, String mensaje, long inicioMs) {
-
-        double progresoActual = (procesados * 100.0) / total;
-
-        jobStatusService.actualizar(job, "ERROR", progresoActual,
-                mensaje);
-
-        jobStatusService.finalizarEjecucion(job, "ERROR");
-
-        guardarLogRuc(job, cliente, tipoError, mensaje, inicioMs, 0);
-
-        return CompletableFuture.completedFuture(job.getId());
     }
 
     private void guardarLogRuc(JobStatus job, Cliente cliente,
@@ -182,9 +196,7 @@ public class SunatBuzonService {
                     entidad.setRuc(clienteDTO.getRuc());
                     entidad.setIdSunat(n.getId());
                     entidad.setTitulo(n.getTitulo());
-                    entidad.setFecha(LocalDateTime.parse(
-                            n.getFecha(),
-                            DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss")));
+                    entidad.setFecha(parseFechaSunat(n.getFecha()));
                     return entidad;
                 })
                 .toList();
@@ -194,5 +206,30 @@ public class SunatBuzonService {
         }
 
         return nuevas.size();
+    }
+
+    private LocalDateTime parseFechaSunat(String fecha) {
+        if (fecha == null || fecha.isBlank())
+            return null;
+
+        try {
+            return LocalDateTime.parse(
+                    fecha.replace(";", " "),
+                    DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss"));
+        } catch (Exception e) {
+            // log técnico, NO romper el job
+            System.err.println("⚠️ Fecha SUNAT inválida: " + fecha);
+            return null;
+        }
+    }
+
+    private String normalizarMensaje(Exception e) {
+        if (e == null || e.getMessage() == null) {
+            return "Error inesperado";
+        }
+        return e.getMessage()
+                .replace(";", "")
+                .replace("\n", " ")
+                .trim();
     }
 }
