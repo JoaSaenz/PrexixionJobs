@@ -12,7 +12,7 @@ import com.joa.prexixion.jobs.model.Cliente;
 @Repository
 public interface ClienteRepository extends JpaRepository<Cliente, String> {
     @Query(value = "SELECT c.ruc, c.y, c.solU, c.solC FROM cliente c WHERE c.idEstado IN (1,3,5,6,7,8,9) ORDER BY c.y ASC", nativeQuery = true)
-    List<Cliente> obtenerClientesActivos();
+    List<Cliente> obtenerClientes();
 
     @Query(value = "SELECT c.ruc, c.solU, c.solC FROM cliente c LEFT JOIN signerNiveles n ON c.ruc = n.idCliente WHERE c.idEstado = :idEstado and c.y = :y and n.idNivelF = 4 and n.idNivelX3 = 5", nativeQuery = true)
     List<Cliente> obtenerClientesActivos(@Param("idEstado") Integer idEstado, @Param("y") Integer y);

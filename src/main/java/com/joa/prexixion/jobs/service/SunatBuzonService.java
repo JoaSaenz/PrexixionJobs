@@ -8,6 +8,7 @@ import java.util.concurrent.CompletableFuture;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
 import com.joa.prexixion.jobs.dto.ClienteDTO;
@@ -51,7 +52,7 @@ public class SunatBuzonService {
         boolean errorCritico = false;
         String mensajeFinal = "Ejecución finalizada correctamente";
 
-        List<Cliente> clientes = clienteRepository.obtenerClientesTest10();
+        List<Cliente> clientes = clienteRepository.obtenerClientes();
         int total = clientes.size();
 
         try {
@@ -90,7 +91,11 @@ public class SunatBuzonService {
                             case "ERROR_HTTP":
                             case "TIMEOUT_NODE":
                             case "NODE_CAIDO":
-                                throw new RuntimeException(response.getMessage());
+                                // Error operativo, NO crítico. Se cuenta como No OK y se sigue.
+                                resultado = response.getType();
+                                mensaje = response.getMessage();
+                                noOk++;
+                                break;
 
                             default:
                                 throw new RuntimeException("Error desconocido: " + response.getType());
@@ -105,6 +110,19 @@ public class SunatBuzonService {
                         if (response.getNotificaciones() != null) {
                             nuevas = procesarNotificaciones(dto, response.getNotificaciones());
                         }
+                    }
+
+                } catch (HttpClientErrorException e) {
+                    if (e.getStatusCode().value() == 400) {
+                        resultado = "ERROR_SIN_CREDENCIALES";
+                        mensaje = "Credenciales incompletas o vacías";
+                        noOk++;
+                        // No marcamos errorCritico, permitiendo que el loop continúe
+                    } else {
+                        // Otros errores HTTP (500, 404, etc)
+                        resultado = "ERROR_HTTP";
+                        mensaje = "Error HTTP " + e.getStatusCode();
+                        noOk++;
                     }
 
                 } catch (Exception e) {
