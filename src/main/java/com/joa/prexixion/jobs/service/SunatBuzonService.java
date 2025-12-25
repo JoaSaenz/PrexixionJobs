@@ -4,6 +4,11 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
@@ -46,127 +51,140 @@ public class SunatBuzonService {
         JobStatus job = jobStatusService.iniciarEjecucion("SincronizacionSUNAT");
         Long jobId = job.getId();
 
-        int procesados = 0;
-        int ok = 0;
-        int noOk = 0;
-        boolean errorCritico = false;
-        String mensajeFinal = "Ejecución finalizada correctamente";
+        AtomicInteger procesados = new AtomicInteger(0);
+        AtomicInteger ok = new AtomicInteger(0);
+        AtomicInteger noOk = new AtomicInteger(0);
+        AtomicBoolean errorCritico = new AtomicBoolean(false);
+        Object lock = new Object(); // Para sincronizar actualizaciones de DB
 
         List<Cliente> clientes = clienteRepository.obtenerClientes();
         int total = clientes.size();
 
+        // Pool de 4 hilos para procesar en paralelo
+        ExecutorService executor = Executors.newFixedThreadPool(4);
+
         try {
+            // Creamos una lista de futuros
+            List<CompletableFuture<Void>> futures = clientes.stream()
+                    .map(cliente -> CompletableFuture.runAsync(() -> {
+                        // Si ya hubo error crítico, abortamos (similar al break)
+                        if (errorCritico.get())
+                            return;
 
-            for (Cliente cliente : clientes) {
+                        long inicioMs = System.currentTimeMillis();
+                        String resultado = "ERROR";
+                        String mensaje = "Sin procesar";
+                        int nuevas = 0;
 
-                long inicioMs = System.currentTimeMillis();
-                String resultado = "ERROR";
-                String mensaje = "Sin procesar";
-                int nuevas = 0;
+                        try {
+                            ClienteDTO dto = new ClienteDTO(
+                                    cliente.getRuc(),
+                                    cliente.getSolU(),
+                                    cliente.getSolC());
 
-                try {
-                    ClienteDTO dto = new ClienteDTO(
-                            cliente.getRuc(),
-                            cliente.getSolU(),
-                            cliente.getSolC());
+                            SunatBuzonResponseDTO response = llamarServicioNode(dto);
 
-                    SunatBuzonResponseDTO response = llamarServicioNode(dto);
+                            if (response == null) {
+                                throw new IllegalStateException("Node no devolvió respuesta");
+                            }
 
-                    if (response == null) {
-                        throw new IllegalStateException("Node no devolvió respuesta");
-                    }
+                            if (!Boolean.TRUE.equals(response.isSuccess())) {
 
-                    if (!Boolean.TRUE.equals(response.isSuccess())) {
+                                switch (response.getType()) {
 
-                        switch (response.getType()) {
+                                    case "CREDENCIALES_INVALIDAS":
+                                        resultado = "CREDENCIALES_INVALIDAS";
+                                        mensaje = "Credenciales erróneas";
+                                        noOk.incrementAndGet();
+                                        break;
 
-                            case "CREDENCIALES_INVALIDAS":
-                                resultado = "CREDENCIALES_INVALIDAS";
-                                mensaje = "Credenciales erróneas";
-                                noOk++;
-                                break;
+                                    case "ERROR_SUNAT":
+                                    case "ERROR_INTERNO":
+                                    case "ERROR_HTTP":
+                                    case "TIMEOUT_NODE":
+                                    case "NODE_CAIDO":
+                                        // Error operativo, NO crítico.
+                                        resultado = response.getType();
+                                        mensaje = response.getMessage();
+                                        noOk.incrementAndGet();
+                                        break;
 
-                            case "ERROR_SUNAT":
-                            case "ERROR_INTERNO":
-                            case "ERROR_HTTP":
-                            case "TIMEOUT_NODE":
-                            case "NODE_CAIDO":
-                                // Error operativo, NO crítico. Se cuenta como No OK y se sigue.
-                                resultado = response.getType();
-                                mensaje = response.getMessage();
-                                noOk++;
-                                break;
+                                    default:
+                                        throw new RuntimeException("Error desconocido: " + response.getType());
+                                }
 
-                            default:
-                                throw new RuntimeException("Error desconocido: " + response.getType());
+                            } else {
+                                // OK
+                                resultado = "OK";
+                                mensaje = "Consulta exitosa";
+                                ok.incrementAndGet();
+
+                                if (response.getNotificaciones() != null) {
+                                    nuevas = procesarNotificaciones(dto, response.getNotificaciones());
+                                }
+                            }
+
+                        } catch (HttpClientErrorException e) {
+                            if (e.getStatusCode().value() == 400) {
+                                resultado = "ERROR_SIN_CREDENCIALES";
+                                mensaje = "Credenciales incompletas o vacías";
+                                noOk.incrementAndGet();
+                            } else {
+                                resultado = "ERROR_HTTP";
+                                mensaje = "Error HTTP " + e.getStatusCode();
+                                noOk.incrementAndGet();
+                            }
+
+                        } catch (Exception e) {
+                            resultado = "ERROR_CRITICO";
+                            mensaje = normalizarMensaje(e);
+                            errorCritico.set(true);
+                            noOk.incrementAndGet();
                         }
 
-                    } else {
-                        // OK
-                        resultado = "OK";
-                        mensaje = "Consulta exitosa";
-                        ok++;
+                        // Guardamos el log INDIVIDUAL (thread-safe si repository lo es)
+                        guardarLogRuc(job, cliente, resultado, mensaje, inicioMs, nuevas);
 
-                        if (response.getNotificaciones() != null) {
-                            nuevas = procesarNotificaciones(dto, response.getNotificaciones());
+                        int currentProcesados = procesados.incrementAndGet();
+
+                        // Sincronizamos la actualización del Job principal para evitar conflictos
+                        synchronized (lock) {
+                            job.setRucsOk(ok.get());
+                            job.setRucsNoOk(noOk.get());
+
+                            double progreso = (currentProcesados * 100.0) / total;
+
+                            // Solo actualizamos mensaje de progreso de vez en cuando o siempre?
+                            // Siempre está bien, es informativo.
+                            jobStatusService.actualizar(
+                                    job,
+                                    "EN_PROGRESO",
+                                    progreso,
+                                    "Procesando... " + currentProcesados + "/" + total);
                         }
-                    }
 
-                } catch (HttpClientErrorException e) {
-                    if (e.getStatusCode().value() == 400) {
-                        resultado = "ERROR_SIN_CREDENCIALES";
-                        mensaje = "Credenciales incompletas o vacías";
-                        noOk++;
-                        // No marcamos errorCritico, permitiendo que el loop continúe
-                    } else {
-                        // Otros errores HTTP (500, 404, etc)
-                        resultado = "ERROR_HTTP";
-                        mensaje = "Error HTTP " + e.getStatusCode();
-                        noOk++;
-                    }
+                    }, executor))
+                    .collect(Collectors.toList());
 
-                } catch (Exception e) {
-                    resultado = "ERROR_CRITICO";
-                    mensaje = normalizarMensaje(e);
-                    errorCritico = true;
-                    noOk++;
-                }
-
-                guardarLogRuc(job, cliente, resultado, mensaje, inicioMs, nuevas);
-
-                procesados++;
-
-                job.setRucsOk(ok);
-                job.setRucsNoOk(noOk);
-
-                double progreso = (procesados * 100.0) / total;
-
-                jobStatusService.actualizar(
-                        job,
-                        "EN_PROGRESO",
-                        progreso,
-                        "Procesado RUC " + cliente.getRuc());
-
-                // Si hubo error crítico, detenemos el job limpiamente
-                if (errorCritico) {
-                    break;
-                }
-            }
+            // Esperamos a que TODOS terminen
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
         } finally {
+            // Importante: apagar el executor para liberar hilos
+            executor.shutdown();
 
-            String estadoFinal = errorCritico ? "ERROR" : "FINALIZADO";
+            String estadoFinal = errorCritico.get() ? "ERROR" : "FINALIZADO";
 
-            mensajeFinal = errorCritico
-                    ? "Ejecución detenida por error crítico"
+            String mensajeFinal = errorCritico.get()
+                    ? "Ejecución detenida (parcialmente) por error crítico"
                     : String.format(
                             "Ejecución completada: %d OK, %d con error",
-                            job.getRucsOk(),
-                            job.getRucsNoOk());
+                            ok.get(),
+                            noOk.get());
 
-            double progresoFinal = errorCritico
-                    ? job.getProgreso() // se queda donde falló
-                    : 100.0; // solo éxito llega a 100%
+            double progresoFinal = errorCritico.get()
+                    ? job.getProgreso()
+                    : 100.0;
 
             jobStatusService.finalizarEjecucion(job, estadoFinal, progresoFinal, mensajeFinal);
         }
