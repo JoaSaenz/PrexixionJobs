@@ -15,6 +15,8 @@ public interface NotificacionRepository extends JpaRepository<Notificacion, Long
     boolean existsByRucAndIdSunat(String ruc, String idSunat);
 
     @Query("SELECT n.idSunat FROM Notificacion n WHERE n.ruc = :ruc AND n.idSunat IN :ids")
-List<String> findExistentes(@Param("ruc") String ruc, @Param("ids") List<String> ids);
+    List<String> findExistentes(@Param("ruc") String ruc, @Param("ids") List<String> ids);
+    
+    List<Notificacion> findByJobStatusIdOrderByFechaDesc(Long jobStatusId);
 
 }

@@ -5,6 +5,7 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
+@Table(name = "jobStatusLog")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -23,6 +24,6 @@ public class JobStatusLog {
     private Integer nuevasNotificaciones; // cantidad de nuevas notificaciones para ese RUC
 
     @ManyToOne
-    @JoinColumn(name = "idJobStatus")
+    @JoinColumn(name = "jobStatusId")
     private JobStatus jobStatus;
 }

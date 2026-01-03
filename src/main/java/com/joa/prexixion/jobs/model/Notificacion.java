@@ -12,10 +12,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 
 @Entity
-@Table(
-    name = "sunatBuzonNotificacion",
-    uniqueConstraints = @UniqueConstraint(columnNames = {"ruc", "idSunat"})
-)
+@Table(name = "sunatBuzonNotificacion", uniqueConstraints = @UniqueConstraint(columnNames = { "ruc", "idSunat" }))
 public class Notificacion {
 
     @Id
@@ -27,11 +24,14 @@ public class Notificacion {
 
     @Column(length = 50, nullable = false)
     private String idSunat;
-    
+
     @Lob
     @Column(columnDefinition = "NVARCHAR(MAX)")
     private String titulo;
     private LocalDateTime fecha;
+
+    @Column(name = "jobStatusId")
+    private Long jobStatusId;
 
     public Notificacion() {
     }
@@ -76,6 +76,12 @@ public class Notificacion {
         this.fecha = fecha;
     }
 
-    
-    
+    public Long getJobStatusId() {
+        return jobStatusId;
+    }
+
+    public void setJobStatusId(Long jobStatusId) {
+        this.jobStatusId = jobStatusId;
+    }
+
 }

@@ -120,7 +120,7 @@ public class SunatBuzonService {
                                 ok.incrementAndGet();
 
                                 if (response.getNotificaciones() != null) {
-                                    nuevas = procesarNotificaciones(dto, response.getNotificaciones());
+                                    nuevas = procesarNotificaciones(dto, response.getNotificaciones(), jobId);
                                 }
                             }
 
@@ -217,7 +217,8 @@ public class SunatBuzonService {
         logRepository.save(log);
     }
 
-    private int procesarNotificaciones(ClienteDTO clienteDTO, List<NotificacionDTO> notificacionesDTO) {
+    private int procesarNotificaciones(ClienteDTO clienteDTO, List<NotificacionDTO> notificacionesDTO,
+            Long jobStatusId) {
         if (notificacionesDTO == null || notificacionesDTO.isEmpty()) {
             return 0;
         }
@@ -233,6 +234,7 @@ public class SunatBuzonService {
                     entidad.setIdSunat(n.getId());
                     entidad.setTitulo(n.getTitulo());
                     entidad.setFecha(parseFechaSunat(n.getFecha()));
+                    entidad.setJobStatusId(jobStatusId);
                     return entidad;
                 })
                 .toList();
