@@ -1,7 +1,6 @@
 package com.joa.prexixion.jobs.repository;
 
 import java.util.List;
-import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -16,7 +15,7 @@ public interface NotificacionRepository extends JpaRepository<Notificacion, Long
 
     @Query("SELECT n.idSunat FROM Notificacion n WHERE n.ruc = :ruc AND n.idSunat IN :ids")
     List<String> findExistentes(@Param("ruc") String ruc, @Param("ids") List<String> ids);
-    
+
     List<Notificacion> findByJobStatusIdOrderByFechaDesc(Long jobStatusId);
 
 }
