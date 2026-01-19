@@ -42,10 +42,6 @@ public class SunatBuzonService {
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Async
-    public CompletableFuture<Long> ejecutarAsync() {
-        return sincronizarBuzones();
-    }
-
     public CompletableFuture<Long> sincronizarBuzones() {
 
         JobStatus job = jobStatusService.iniciarEjecucion("SincronizacionSUNAT");

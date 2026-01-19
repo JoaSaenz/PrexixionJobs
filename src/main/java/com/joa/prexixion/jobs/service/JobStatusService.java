@@ -3,16 +3,11 @@ package com.joa.prexixion.jobs.service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
 
 import org.springframework.stereotype.Service;
 
 import com.joa.prexixion.jobs.model.JobStatus;
-import com.joa.prexixion.jobs.model.JobStatusLog;
-import com.joa.prexixion.jobs.model.Notificacion;
-import com.joa.prexixion.jobs.repository.JobStatusLogRepository;
 import com.joa.prexixion.jobs.repository.JobStatusRepository;
-import com.joa.prexixion.jobs.repository.NotificacionRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -20,8 +15,6 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class JobStatusService {
     private final JobStatusRepository repo;
-    private final JobStatusLogRepository logRepo;
-    private final NotificacionRepository notificacionRepo;
     private final DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     /** Crear un nuevo registro JobStatus por ejecución */
@@ -62,35 +55,8 @@ public class JobStatusService {
         return repo.save(job);
     }
 
-    public JobStatus obtener(String nombreJob) {
-        return repo.findTopByNombreJobOrderByHoraInicioDesc(nombreJob)
-                .orElse(JobStatus.builder()
-                        .nombreJob(nombreJob)
-                        .estado("SIN_INICIAR")
-                        .progreso(0.0)
-                        .mensaje("Esperando ejecución...")
-                        .build());
-    }
-
-    /**
-     * Listar todas las ejecuciones de un job específico, ordenadas por más reciente
-     * primero
-     */
-    public List<JobStatus> listarPorNombreJob(String nombreJob) {
-        return repo.findTop7ByNombreJobOrderByHoraInicioDesc(nombreJob);
-    }
-
     public JobStatus obtenerPorId(Long id) {
         return repo.findById(id)
                 .orElseThrow(() -> new RuntimeException("JobStatus no encontrado"));
-    }
-
-    public List<JobStatusLog> obtenerLogs(Long jobStatusId) {
-        JobStatus jobStatus = obtenerPorId(jobStatusId);
-        return logRepo.findByJobStatusOrderByFechaRegistroAsc(jobStatus);
-    }
-
-    public List<Notificacion> obtenerNotificaciones(Long jobStatusId) {
-        return notificacionRepo.findByJobStatusIdOrderByFechaDesc(jobStatusId);
     }
 }
