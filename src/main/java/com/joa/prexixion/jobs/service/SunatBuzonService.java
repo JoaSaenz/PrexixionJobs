@@ -2,6 +2,7 @@ package com.joa.prexixion.jobs.service;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -23,6 +24,7 @@ import com.joa.prexixion.jobs.model.Cliente;
 import com.joa.prexixion.jobs.model.JobStatus;
 import com.joa.prexixion.jobs.model.JobStatusLog;
 import com.joa.prexixion.jobs.model.Notificacion;
+import com.joa.prexixion.jobs.model.NotificacionAdjunto;
 import com.joa.prexixion.jobs.repository.ClienteRepository;
 import com.joa.prexixion.jobs.repository.JobStatusLogRepository;
 import com.joa.prexixion.jobs.repository.NotificacionRepository;
@@ -53,7 +55,7 @@ public class SunatBuzonService {
         AtomicBoolean errorCritico = new AtomicBoolean(false);
         Object lock = new Object(); // Para sincronizar actualizaciones de DB
 
-        List<Cliente> clientes = clienteRepository.obtenerClientes();
+        List<Cliente> clientes = clienteRepository.obtenerClientesTest10();
         int total = clientes.size();
 
         // Pool de 4 hilos para procesar en paralelo
@@ -220,26 +222,63 @@ public class SunatBuzonService {
         }
 
         List<String> ids = notificacionesDTO.stream().map(NotificacionDTO::getId).toList();
-        List<String> existentes = notificacionRepository.findExistentes(clienteDTO.getRuc(), ids);
+        // Obtener entidades completas para verificar adjuntos
+        List<Notificacion> existentes = notificacionRepository.findByRucAndIdSunatIn(clienteDTO.getRuc(), ids);
 
-        List<Notificacion> nuevas = notificacionesDTO.stream()
-                .filter(n -> !existentes.contains(n.getId()))
-                .map(n -> {
-                    Notificacion entidad = new Notificacion();
-                    entidad.setRuc(clienteDTO.getRuc());
-                    entidad.setIdSunat(n.getId());
-                    entidad.setTitulo(n.getTitulo());
-                    entidad.setFecha(parseFechaSunat(n.getFecha()));
-                    entidad.setJobStatusId(jobStatusId);
-                    return entidad;
-                })
-                .toList();
+        int procesadasCount = 0;
 
-        if (!nuevas.isEmpty()) {
-            notificacionRepository.saveAll(nuevas);
+        for (NotificacionDTO nDTO : notificacionesDTO) {
+            Notificacion entidad = existentes.stream()
+                    .filter(e -> e.getIdSunat().equals(nDTO.getId()))
+                    .findFirst()
+                    .orElse(null);
+
+            boolean esNueva = (entidad == null);
+
+            if (esNueva) {
+                entidad = new Notificacion();
+                entidad.setRuc(clienteDTO.getRuc());
+                entidad.setIdSunat(nDTO.getId());
+                entidad.setTitulo(nDTO.getTitulo());
+                entidad.setFecha(parseFechaSunat(nDTO.getFecha()));
+                entidad.setJobStatusId(jobStatusId);
+            }
+
+            // Solo agregamos adjuntos si:
+            // 1. Es nueva OR
+            // 2. Ya existe pero no tiene adjuntos (para recuperar archivos de
+            // notificaciones viejas)
+            if (nDTO.getAdjuntos() != null && !nDTO.getAdjuntos().isEmpty()) {
+                if (esNueva || (entidad.getAdjuntos() == null || entidad.getAdjuntos().isEmpty())) {
+                    for (NotificacionDTO.AdjuntoDTO adjDTO : nDTO.getAdjuntos()) {
+                        NotificacionAdjunto adj = new NotificacionAdjunto();
+                        adj.setNombre(adjDTO.getNombre());
+                        try {
+                            adj.setContenido(Base64.getDecoder().decode(adjDTO.getBase64()));
+                        } catch (Exception e) {
+                            System.err.println(
+                                    "⚠️ Error decodificando adjunto " + adjDTO.getNombre() + ": " + e.getMessage());
+                        }
+                        adj.setNotificacion(entidad);
+                        entidad.getAdjuntos().add(adj);
+                    }
+
+                    if (esNueva) {
+                        procesadasCount++;
+                    } else {
+                        // Si no era nueva pero le agregamos adjuntos, debemos guardarla también
+                        // El repository.saveAll la actualizará
+                    }
+                }
+            } else if (esNueva) {
+                procesadasCount++;
+            }
+
+            // Si es nueva o si fue actualizada (porque le agregamos adjuntos), la guardamos
+            notificacionRepository.save(entidad);
         }
 
-        return nuevas.size();
+        return procesadasCount;
     }
 
     private LocalDateTime parseFechaSunat(String fecha) {

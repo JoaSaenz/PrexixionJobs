@@ -1,6 +1,8 @@
 package com.joa.prexixion.jobs.model;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -8,6 +10,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 
@@ -32,6 +36,9 @@ public class Notificacion {
 
     @Column(name = "jobStatusId")
     private Long jobStatusId;
+
+    @OneToMany(mappedBy = "notificacion", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<NotificacionAdjunto> adjuntos = new ArrayList<>();
 
     public Notificacion() {
     }
@@ -82,6 +89,14 @@ public class Notificacion {
 
     public void setJobStatusId(Long jobStatusId) {
         this.jobStatusId = jobStatusId;
+    }
+
+    public List<NotificacionAdjunto> getAdjuntos() {
+        return adjuntos;
+    }
+
+    public void setAdjuntos(List<NotificacionAdjunto> adjuntos) {
+        this.adjuntos = adjuntos;
     }
 
 }

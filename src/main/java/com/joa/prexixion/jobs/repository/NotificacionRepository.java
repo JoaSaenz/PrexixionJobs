@@ -16,4 +16,7 @@ public interface NotificacionRepository extends JpaRepository<Notificacion, Long
     @Query("SELECT n.idSunat FROM Notificacion n WHERE n.ruc = :ruc AND n.idSunat IN :ids")
     List<String> findExistentes(@Param("ruc") String ruc, @Param("ids") List<String> ids);
 
+    @Query("SELECT n FROM Notificacion n LEFT JOIN FETCH n.adjuntos WHERE n.ruc = :ruc AND n.idSunat IN :ids")
+    List<Notificacion> findByRucAndIdSunatIn(@Param("ruc") String ruc, @Param("ids") List<String> ids);
+
 }
