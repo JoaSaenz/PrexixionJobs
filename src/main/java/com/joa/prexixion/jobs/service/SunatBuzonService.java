@@ -12,6 +12,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
@@ -42,6 +44,7 @@ public class SunatBuzonService {
     private JobStatusLogRepository logRepository;
 
     private final RestTemplate restTemplate = new RestTemplate();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Async
     public CompletableFuture<Long> sincronizarBuzones() {
@@ -75,12 +78,38 @@ public class SunatBuzonService {
                         int nuevas = 0;
 
                         try {
+                            // 1. Validación previa en Java para evitar llamadas innecesarias a Node
+                            if (cliente.getSolU() == null || cliente.getSolU().isBlank() ||
+                                    cliente.getSolC() == null || cliente.getSolC().isBlank()) {
+                                resultado = "ERROR_SIN_CREDENCIALES";
+                                mensaje = "Credenciales SOL incompletas en base de datos";
+                                noOk.incrementAndGet();
+                                guardarLogRuc(job, cliente, resultado, mensaje, inicioMs, nuevas);
+                                procesados.incrementAndGet();
+                                return;
+                            }
+
                             ClienteDTO dto = new ClienteDTO(
                                     cliente.getRuc(),
                                     cliente.getSolU(),
                                     cliente.getSolC());
 
-                            SunatBuzonResponseDTO response = llamarServicioNode(dto);
+                            SunatBuzonResponseDTO response;
+                            try {
+                                response = llamarServicioNode(dto);
+                            } catch (HttpClientErrorException e) {
+                                throw e; // Relanzar para el catch específico
+                            } catch (Exception e) {
+                                // Error de JSON o de comunicación: lo tratamos como un error de estE RUC
+                                // solamente
+                                resultado = "ERROR_COMUNICACION";
+                                mensaje = "Error comunicación/JSON: "
+                                        + (e.getMessage() != null ? e.getMessage() : e.toString());
+                                noOk.incrementAndGet();
+                                guardarLogRuc(job, cliente, resultado, mensaje, inicioMs, nuevas);
+                                procesados.incrementAndGet();
+                                return; // Salir de este RUC pero NO marcar errorCritico
+                            }
 
                             if (response == null) {
                                 throw new IllegalStateException("Node no devolvió respuesta");
@@ -88,11 +117,11 @@ public class SunatBuzonService {
 
                             if (!Boolean.TRUE.equals(response.isSuccess())) {
 
-                                switch (response.getType()) {
+                                switch (response.getType() != null ? response.getType() : "ERROR_DESCONOCIDO") {
 
                                     case "CREDENCIALES_INVALIDAS":
                                         resultado = "CREDENCIALES_INVALIDAS";
-                                        mensaje = "Credenciales erróneas";
+                                        mensaje = "Credenciales SOL no válidas en SUNAT";
                                         noOk.incrementAndGet();
                                         break;
 
@@ -101,14 +130,19 @@ public class SunatBuzonService {
                                     case "ERROR_HTTP":
                                     case "TIMEOUT_NODE":
                                     case "NODE_CAIDO":
-                                        // Error operativo, NO crítico.
                                         resultado = response.getType();
-                                        mensaje = response.getMessage();
+                                        mensaje = response.getMessage() != null ? response.getMessage()
+                                                : response.getError();
                                         noOk.incrementAndGet();
                                         break;
 
                                     default:
-                                        throw new RuntimeException("Error desconocido: " + response.getType());
+                                        resultado = "ERROR_DESCONOCIDO";
+                                        mensaje = response.getError() != null ? response.getError()
+                                                : (response.getMessage() != null ? response.getMessage()
+                                                        : "Detalle desconocido");
+                                        noOk.incrementAndGet();
+                                        break;
                                 }
 
                             } else {
@@ -123,24 +157,25 @@ public class SunatBuzonService {
                             }
 
                         } catch (HttpClientErrorException e) {
+                            resultado = "ERROR_HTTP";
                             if (e.getStatusCode().value() == 400) {
                                 resultado = "ERROR_SIN_CREDENCIALES";
-                                mensaje = "Credenciales incompletas o vacías";
-                                noOk.incrementAndGet();
+                                mensaje = "Node reportó credenciales faltantes (400)";
                             } else {
-                                resultado = "ERROR_HTTP";
                                 mensaje = "Error HTTP " + e.getStatusCode();
-                                noOk.incrementAndGet();
                             }
+                            noOk.incrementAndGet();
 
                         } catch (Exception e) {
                             resultado = "ERROR_CRITICO";
                             mensaje = normalizarMensaje(e);
-                            errorCritico.set(true);
+                            // Solo errores realmente inesperados (como fallos de BD) detienen el batch
+                            // errorCritico.set(true); // Comentado temporalmente para dejar que el proceso
+                            // avance
                             noOk.incrementAndGet();
                         }
 
-                        // Guardamos el log INDIVIDUAL (thread-safe si repository lo es)
+                        // Guardamos el log INDIVIDUAL
                         guardarLogRuc(job, cliente, resultado, mensaje, inicioMs, nuevas);
 
                         int currentProcesados = procesados.incrementAndGet();
@@ -195,7 +230,18 @@ public class SunatBuzonService {
 
     private SunatBuzonResponseDTO llamarServicioNode(ClienteDTO dto) {
         String url = "http://localhost:3000/sunat/consultar";
-        return restTemplate.postForObject(url, dto, SunatBuzonResponseDTO.class);
+
+        // Obtenemos la respuesta como String primero para diagnóstico si falla el mapeo
+        ResponseEntity<String> responseEntity = restTemplate.postForEntity(url, dto, String.class);
+        String rawJson = responseEntity.getBody();
+
+        try {
+            return objectMapper.readValue(rawJson, SunatBuzonResponseDTO.class);
+        } catch (Exception e) {
+            // Si falla la extracción, lanzamos con el contenido crudo para ver qué envió
+            // Node realmente
+            throw new RuntimeException("Error mapeo JSON. Contenido recibido: " + rawJson, e);
+        }
     }
 
     private void guardarLogRuc(JobStatus job, Cliente cliente,
@@ -204,8 +250,8 @@ public class SunatBuzonService {
         JobStatusLog log = JobStatusLog.builder()
                 .ruc(cliente.getRuc())
                 .y(cliente.getY())
-                .resultado(resultado)
-                .mensaje(mensaje)
+                .resultado(limitar(resultado, 50))
+                .mensaje(limitar(mensaje, 250)) // Forzamos 250 por si la BD no se actualizó
                 .duracionMs(System.currentTimeMillis() - inicioMs)
                 .nuevasNotificaciones(nuevasNotificaciones)
                 .fechaRegistro(LocalDateTime.now())
@@ -297,12 +343,17 @@ public class SunatBuzonService {
     }
 
     private String normalizarMensaje(Exception e) {
-        if (e == null || e.getMessage() == null) {
-            return "Error inesperado";
-        }
-        return e.getMessage()
-                .replace(";", "")
-                .replace("\n", " ")
-                .trim();
+        if (e == null)
+            return "Error desconocido";
+        String msg = e.getMessage() != null ? e.getMessage() : e.toString();
+        return limitar(msg.replace(";", "").replace("\n", " ").trim(), 250);
+    }
+
+    private String limitar(String s, int len) {
+        if (s == null)
+            return null;
+        if (s.length() <= len)
+            return s;
+        return s.substring(0, len - 3) + "...";
     }
 }

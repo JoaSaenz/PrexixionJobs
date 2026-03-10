@@ -33,6 +33,6 @@ public interface ClienteRepository extends JpaRepository<Cliente, String> {
                 '20605036709', '20601466229', '20600994159', '20481327319', '10179252649'
             )
             """, nativeQuery = true)
-    List<Cliente> obtenerClientesTest10();
+    List<Cliente> obtenerClientesTest();
 
 }

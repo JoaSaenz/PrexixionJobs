@@ -18,6 +18,7 @@ public class JobStatusLog {
     private String ruc;
     private String y;
     private String resultado; // OK, ERROR, CREDENCIALES_INVALIDAS, etc
+    @Column(length = 2000)
     private String mensaje;
     private Long duracionMs;
     private LocalDateTime fechaRegistro;
