@@ -44,7 +44,21 @@ public class SunatBuzonService {
     private JobStatusLogRepository logRepository;
 
     private final RestTemplate restTemplate = new RestTemplate();
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
+
+    public SunatBuzonService() {
+        this.objectMapper = new ObjectMapper()
+                .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,
+                        false);
+        try {
+            this.objectMapper.getFactory().setStreamReadConstraints(
+                    com.fasterxml.jackson.core.StreamReadConstraints.builder()
+                            .maxStringLength(Integer.MAX_VALUE)
+                            .build());
+        } catch (Throwable t) {
+            // Ignore if older Jackson version
+        }
+    }
 
     @Async
     public CompletableFuture<Long> sincronizarBuzones() {
