@@ -34,6 +34,12 @@ public class Notificacion {
     private String titulo;
     private LocalDateTime fecha;
 
+    @Column(length = 100)
+    private String tipo;
+
+    @Column(length = 150)
+    private String nombreCorto;
+
     @Column(name = "jobStatusId")
     private Long jobStatusId;
 
@@ -84,6 +90,22 @@ public class Notificacion {
 
     public void setFecha(LocalDateTime fecha) {
         this.fecha = fecha;
+    }
+
+    public String getTipo() {
+        return tipo;
+    }
+
+    public void setTipo(String tipo) {
+        this.tipo = tipo;
+    }
+
+    public String getNombreCorto() {
+        return nombreCorto;
+    }
+
+    public void setNombreCorto(String nombreCorto) {
+        this.nombreCorto = nombreCorto;
     }
 
     public Long getJobStatusId() {

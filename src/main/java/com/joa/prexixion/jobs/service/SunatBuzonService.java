@@ -23,6 +23,7 @@ import com.joa.prexixion.jobs.dto.ClienteDTO;
 import com.joa.prexixion.jobs.dto.NotificacionDTO;
 import com.joa.prexixion.jobs.dto.SunatBuzonResponseDTO;
 import com.joa.prexixion.jobs.model.Cliente;
+import com.joa.prexixion.jobs.model.TipologiaNotificacion;
 import com.joa.prexixion.jobs.model.JobStatus;
 import com.joa.prexixion.jobs.model.JobStatusLog;
 import com.joa.prexixion.jobs.model.Notificacion;
@@ -72,7 +73,7 @@ public class SunatBuzonService {
         AtomicBoolean errorCritico = new AtomicBoolean(false);
         Object lock = new Object(); // Para sincronizar actualizaciones de DB
 
-        List<Cliente> clientes = clienteRepository.obtenerClientes();
+        List<Cliente> clientes = clienteRepository.obtenerClientesTest();
         int total = clientes.size();
 
         // Pool de 4 hilos para procesar en paralelo
@@ -302,6 +303,10 @@ public class SunatBuzonService {
                 entidad.setTitulo(nDTO.getTitulo());
                 entidad.setFecha(parseFechaSunat(nDTO.getFecha()));
                 entidad.setJobStatusId(jobStatusId);
+
+                TipologiaNotificacion tipologia = TipologiaNotificacion.clasificar(nDTO.getTitulo());
+                entidad.setTipo(tipologia.getTipo());
+                entidad.setNombreCorto(tipologia.getNombreCorto());
             }
 
             // Solo agregamos adjuntos si:
