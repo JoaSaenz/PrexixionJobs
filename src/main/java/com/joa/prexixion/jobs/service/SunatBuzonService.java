@@ -73,7 +73,7 @@ public class SunatBuzonService {
         AtomicBoolean errorCritico = new AtomicBoolean(false);
         Object lock = new Object(); // Para sincronizar actualizaciones de DB
 
-        List<Cliente> clientes = clienteRepository.obtenerClientesTest();
+        List<Cliente> clientes = clienteRepository.obtenerClientes();
         int total = clientes.size();
 
         // Pool de 4 hilos para procesar en paralelo
